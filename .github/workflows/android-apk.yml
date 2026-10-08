@@ -1,0 +1,130 @@
+name: Android APK
+on:
+  workflow_dispatch:
+  push:
+    paths: ['.github/workflows/android-apk.yml']
+permissions:
+  contents: read
+jobs:
+  apk:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build unsigned Android application
+        shell: bash
+        run: |
+          set -euo pipefail
+          export JAVA_HOME="$JAVA_HOME_21_X64"
+          export PATH="$JAVA_HOME/bin:$PATH"
+          TOOLS=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
+          PLATFORM=$(find "$ANDROID_HOME/platforms" -name android.jar | sort -V | tail -1)
+          mkdir -p apk/src/tr/ozgurharita/tablet apk/res/drawable apk/classes apk/dex apk/compiled
+          cp icon-512.png apk/res/drawable/logo.png
+          cat > apk/src/tr/ozgurharita/tablet/MainActivity.java <<'JAVA'
+          package tr.ozgurharita.tablet;
+          import android.app.Activity;
+          import android.app.AlertDialog;
+          import android.content.Intent;
+          import android.graphics.Color;
+          import android.net.Uri;
+          import android.os.Bundle;
+          import android.print.PrintManager;
+          import android.util.Base64;
+          import android.view.View;
+          import android.view.WindowInsets;
+          import android.webkit.JavascriptInterface;
+          import android.webkit.WebResourceError;
+          import android.webkit.WebResourceRequest;
+          import android.webkit.WebSettings;
+          import android.webkit.WebView;
+          import android.webkit.WebViewClient;
+          import android.widget.Button;
+          import android.widget.FrameLayout;
+          import android.widget.LinearLayout;
+          import android.widget.TextView;
+          import android.widget.Toast;
+          import java.io.OutputStream;
+          
+          public class MainActivity extends Activity {
+              private static final String HOME="https://ozgureyupglu-ai.github.io/ozgur-harita-tablet/";
+              private WebView web;
+              private LinearLayout errorView;
+              private byte[] pendingFile;
+              private boolean printPending=false;
+              @Override public void onCreate(Bundle state){
+                  super.onCreate(state);
+                  getWindow().setStatusBarColor(Color.rgb(244,247,251));
+                  getWindow().setNavigationBarColor(Color.rgb(20,22,24));
+                  FrameLayout root=new FrameLayout(this);
+                  root.setBackgroundColor(Color.rgb(244,247,251));
+                  root.setOnApplyWindowInsetsListener((v,insets)->{
+                      if(android.os.Build.VERSION.SDK_INT>=30){android.graphics.Insets i=insets.getInsets(WindowInsets.Type.systemBars());v.setPadding(i.left,i.top,i.right,i.bottom);}
+                      return insets;
+                  });
+                  web=new WebView(this);
+                  root.addView(web,new FrameLayout.LayoutParams(-1,-1));
+                  WebSettings s=web.getSettings();s.setJavaScriptEnabled(true);s.setDomStorageEnabled(true);
+                  s.setAllowFileAccess(false);s.setAllowContentAccess(false);s.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
+                  s.setMediaPlaybackRequiresUserGesture(true);
+                  android.webkit.CookieManager.getInstance().setAcceptThirdPartyCookies(web,false);
+                  WebView.setWebContentsDebuggingEnabled(false);
+                  web.addJavascriptInterface(new NativeBridge(),"OzgurAndroid");
+                  web.setWebViewClient(new WebViewClient(){
+                      @Override public boolean shouldOverrideUrlLoading(WebView view,WebResourceRequest request){
+                          if(trusted(request.getUrl()))return false;
+                          external(request.getUrl());return true;
+                      }
+                      @Override public void onPageStarted(WebView view,String url,android.graphics.Bitmap icon){errorView.setVisibility(View.GONE);}
+                      @Override public void onPageFinished(WebView view,String url){if(trusted(Uri.parse(url)))view.evaluateJavascript(BRIDGE_SCRIPT,null);}
+                      @Override public void onReceivedError(WebView view,WebResourceRequest request,WebResourceError error){if(request.isForMainFrame())errorView.setVisibility(View.VISIBLE);}
+                  });
+                  errorView=new LinearLayout(this);errorView.setOrientation(LinearLayout.VERTICAL);errorView.setGravity(android.view.Gravity.CENTER);errorView.setPadding(36,36,36,36);errorView.setBackgroundColor(Color.rgb(244,247,251));
+                  TextView title=new TextView(this);title.setText("ÖZGÜR HARİTA");title.setTextSize(26);title.setTextColor(Color.rgb(255,96,28));errorView.addView(title);
+                  TextView info=new TextView(this);info.setText("Bağlantı kurulamadı. İnternet bağlantınızı kontrol edin.");info.setTextSize(16);info.setPadding(0,28,0,28);errorView.addView(info);
+                  Button retry=new Button(this);retry.setText("Tekrar Dene");retry.setOnClickListener(v->web.loadUrl(HOME));errorView.addView(retry);errorView.setVisibility(View.GONE);root.addView(errorView,new FrameLayout.LayoutParams(-1,-1));setContentView(root);
+                  web.loadUrl(HOME);
+              }
+              private boolean trusted(Uri u){return "https".equals(u.getScheme())&&"ozgureyupglu-ai.github.io".equals(u.getHost())&&u.getPath()!=null&&u.getPath().startsWith("/ozgur-harita-tablet/");}
+              private void external(Uri uri){String scheme=uri.getScheme();if(!"https".equals(scheme)&&!"tel".equals(scheme)&&!"mailto".equals(scheme))return;try{startActivity(new Intent(Intent.ACTION_VIEW,uri));}catch(android.content.ActivityNotFoundException e){Toast.makeText(this,"Bağlantıyı açacak uygulama bulunamadı.",Toast.LENGTH_LONG).show();}}
+              public class NativeBridge {
+                  @JavascriptInterface public void saveExcel(String filename,String encoded){
+                      if(encoded==null||encoded.length()>14000000)return;
+                      final byte[] bytes;try{bytes=Base64.decode(encoded,Base64.DEFAULT);}catch(IllegalArgumentException e){return;}
+                      runOnUiThread(()->{if(!trusted(Uri.parse(web.getUrl()==null?"":web.getUrl())))return;if(pendingFile!=null){Toast.makeText(MainActivity.this,"Önce açık kaydetme penceresini tamamlayın.",Toast.LENGTH_LONG).show();return;}pendingFile=bytes;Intent intent=new Intent(Intent.ACTION_CREATE_DOCUMENT);intent.addCategory(Intent.CATEGORY_OPENABLE);intent.setType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");String safe=filename==null?"OzgurHarita-Rapor.xlsx":filename.replaceAll("[^A-Za-z0-9_.-]","_");if(!safe.endsWith(".xlsx"))safe+=".xlsx";intent.putExtra(Intent.EXTRA_TITLE,safe);try{startActivityForResult(intent,10);}catch(android.content.ActivityNotFoundException e){pendingFile=null;Toast.makeText(MainActivity.this,"Dosya kaydetme uygulaması bulunamadı.",Toast.LENGTH_LONG).show();}});
+                  }
+                  @JavascriptInterface public void printReport(){runOnUiThread(()->{if(!trusted(Uri.parse(web.getUrl()==null?"":web.getUrl())))return;PrintManager pm=(PrintManager)getSystemService(PRINT_SERVICE);printPending=true;pm.print("OzgurHarita-Rapor",web.createPrintDocumentAdapter("Özgür Harita Raporu"),null);});}
+              }
+              @Override protected void onActivityResult(int request,int result,Intent intent){super.onActivityResult(request,result,intent);if(request==10){byte[] file=pendingFile;pendingFile=null;if(result==RESULT_OK&&intent!=null&&file!=null){try(OutputStream out=getContentResolver().openOutputStream(intent.getData())){if(out==null)throw new java.io.IOException();out.write(file);Toast.makeText(this,"Excel raporu kaydedildi.",Toast.LENGTH_LONG).show();}catch(Exception e){Toast.makeText(this,"Dosya kaydedilemedi.",Toast.LENGTH_LONG).show();}}}}
+              @Override protected void onResume(){super.onResume();if(printPending&&web!=null){printPending=false;web.evaluateJavascript("window.dispatchEvent(new Event('afterprint'));",null);}}
+              @Override public void onBackPressed(){web.evaluateJavascript("(function(){var dialog=document.querySelector('.overlay:last-child button[aria-label=\"Pencereyi kapat\"]');if(dialog){dialog.click();return true;}return false;})()",value->{if(!"true".equals(value))new AlertDialog.Builder(this).setMessage("Uygulamadan çıkılsın mı?").setPositiveButton("Çık",(d,w)->finish()).setNegativeButton("Vazgeç",null).show();});}
+              @Override protected void onDestroy(){web.removeJavascriptInterface("OzgurAndroid");web.destroy();super.onDestroy();}
+              private static final String BRIDGE_SCRIPT="(function(){if(window.ozgurNativeReady)return;window.ozgurNativeReady=true;const blobs=new Map();const make=URL.createObjectURL.bind(URL),revoke=URL.revokeObjectURL.bind(URL);URL.createObjectURL=function(blob){const u=make(blob);blobs.set(u,blob);return u;};URL.revokeObjectURL=function(u){blobs.delete(u);return revoke(u);};const click=HTMLAnchorElement.prototype.click;HTMLAnchorElement.prototype.click=function(){if(this.download&&blobs.has(this.href)&&this.download.endsWith('.xlsx')){const reader=new FileReader(),filename=this.download;reader.onload=function(){OzgurAndroid.saveExcel(filename,String(reader.result).split(',')[1]);};reader.readAsDataURL(blobs.get(this.href));return;}return click.call(this);};window.print=function(){window.dispatchEvent(new Event('beforeprint'));setTimeout(function(){OzgurAndroid.printReport();},150);};})()";
+          }
+          JAVA
+          cat > apk/AndroidManifest.xml <<'XML'
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="tr.ozgurharita.tablet" android:versionCode="12" android:versionName="1.2">
+            <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="35"/>
+            <uses-permission android:name="android.permission.INTERNET"/>
+            <application android:label="Özgür Harita" android:icon="@drawable/logo" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:allowBackup="false" android:debuggable="false" android:usesCleartextTraffic="false" android:supportsRtl="true">
+              <activity android:name=".MainActivity" android:exported="true" android:configChanges="orientation|screenSize|keyboardHidden" android:windowSoftInputMode="adjustResize">
+                <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+              </activity>
+            </application>
+          </manifest>
+          XML
+          "$TOOLS/aapt2" compile --dir apk/res -o apk/compiled
+          "$TOOLS/aapt2" link -I "$PLATFORM" --manifest apk/AndroidManifest.xml -o apk/base.apk apk/compiled/*
+          javac -encoding UTF-8 -source 8 -target 8 -bootclasspath "$PLATFORM" -d apk/classes apk/src/tr/ozgurharita/tablet/MainActivity.java
+          "$TOOLS/d8" --lib "$PLATFORM" --min-api 26 --output apk/dex $(find apk/classes -name '*.class')
+          (cd apk/dex && zip -j ../base.apk classes.dex)
+          "$TOOLS/zipalign" -p -f 4 apk/base.apk apk/OzgurHarita-v1.2-unsigned.apk
+          "$TOOLS/aapt2" dump badging apk/OzgurHarita-v1.2-unsigned.apk > apk/apk-info.txt
+          cp "$TOOLS/lib/apksigner.jar" apk/apksigner.jar
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OzgurHarita-Android-v1.2-unsigned
+          path: |
+            apk/OzgurHarita-v1.2-unsigned.apk
+            apk/apksigner.jar
+            apk/apk-info.txt
+          retention-days: 3

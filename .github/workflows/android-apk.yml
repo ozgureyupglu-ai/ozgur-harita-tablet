@@ -105,16 +105,17 @@ jobs:
           <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="tr.ozgurharita.tablet" android:versionCode="12" android:versionName="1.2">
             <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="35"/>
             <uses-permission android:name="android.permission.INTERNET"/>
-            <application android:label="Özgür Harita" android:icon="@drawable/logo" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:allowBackup="false" android:debuggable="false" android:usesCleartextTraffic="false" android:supportsRtl="true">
+            <application android:label="Özgür Harita" android:icon="@drawable/logo" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:enableOnBackInvokedCallback="false" android:allowBackup="false" android:debuggable="false" android:usesCleartextTraffic="false" android:supportsRtl="true">
               <activity android:name=".MainActivity" android:exported="true" android:configChanges="orientation|screenSize|keyboardHidden" android:windowSoftInputMode="adjustResize">
                 <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
               </activity>
             </application>
           </manifest>
+          
           XML
           "$TOOLS/aapt2" compile --dir apk/res -o apk/compiled
           "$TOOLS/aapt2" link -I "$PLATFORM" --manifest apk/AndroidManifest.xml -o apk/base.apk apk/compiled/*
-          javac -encoding UTF-8 -source 8 -target 8 -bootclasspath "$PLATFORM" -d apk/classes apk/src/tr/ozgurharita/tablet/MainActivity.java
+          javac -encoding UTF-8 --release 8 -classpath "$PLATFORM" -d apk/classes apk/src/tr/ozgurharita/tablet/MainActivity.java
           "$TOOLS/d8" --lib "$PLATFORM" --min-api 26 --output apk/dex $(find apk/classes -name '*.class')
           (cd apk/dex && zip -j ../base.apk classes.dex)
           "$TOOLS/zipalign" -p -f 4 apk/base.apk apk/OzgurHarita-v1.2-unsigned.apk

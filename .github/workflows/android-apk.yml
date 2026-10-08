@@ -4,7 +4,7 @@ on:
   push:
     paths: ['.github/workflows/android-apk.yml']
 permissions:
-  contents: read
+  contents: write
 jobs:
   apk:
     runs-on: ubuntu-24.04
@@ -129,3 +129,13 @@ jobs:
             apk/apksigner.jar
             apk/apk-info.txt
           retention-days: 3
+
+      - name: Publish unsigned build files
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const release = await github.rest.repos.createRelease({...context.repo, tag_name:'android-build-v1.2', name:'Android v1.2 unsigned build files', body:'Build files for local signing. Use the signed Android v1.2 release for installation.', prerelease:true, make_latest:'false'});
+            for (const name of ['OzgurHarita-v1.2-unsigned.apk','apksigner.jar','apk-info.txt']) {
+              await github.rest.repos.uploadReleaseAsset({...context.repo, release_id:release.data.id, name, data:fs.readFileSync('apk/'+name)});
+            }

@@ -1,0 +1,1 @@
+{"id": "./", "name": "Özgür Harita Müşteri Takip", "short_name": "Özgür Harita", "lang": "tr", "start_url": "./", "scope": "./", "display": "standalone", "background_color": "#f4f7fb", "theme_color": "#ff601c", "icons": [{"src": "./icon-192.png", "sizes": "192x192", "type": "image/png"}, {"src": "./icon-512.png", "sizes": "512x512", "type": "image/png"}]}

@@ -7,7 +7,7 @@ const shell = [
   "apple-touch-icon.png",
   "manifest.webmanifest",
 ].map((p) => new URL(p, base).href);
-const CACHE = "ozgur-harita-shell-1.2-mobile-compact-20261019";
+const CACHE = "ozgur-harita-shell-1.2-supplier-debts-20261020";
 self.addEventListener("install", (event) =>
   event.waitUntil(caches.open(CACHE).then((c) => c.addAll(shell))),
 );
